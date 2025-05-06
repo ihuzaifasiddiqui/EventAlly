@@ -4,7 +4,8 @@ import axios from "axios";
 import Header from "./components/Header";
 import { Outlet } from "react-router-dom";
 import Footer from "./components/Footer";
-import { BackgroundLines } from "./components/ui/background-lines";
+// import { BackgroundLines } from "./components/ui/background-lines";
+import { BackgroundBeams } from "./components/ui/background-beams";
 
 function App() {
   const [data, setData] = useState<any>();
@@ -23,11 +24,11 @@ function App() {
   }, []);
 
   return (
-    <BackgroundLines className="bg-black text-white">
-      <Header />
+    <BackgroundBeams className="bg-[#FFFFFF]">
+      <Header/>
       <Outlet />
       <Footer />
-    </BackgroundLines>
+    </BackgroundBeams>
   );
 }
 

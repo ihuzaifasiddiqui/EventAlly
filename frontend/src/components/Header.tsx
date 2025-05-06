@@ -9,11 +9,11 @@ const Header = () => {
   ]
   return (
     <div>
-    <Navbar className="p-4 border-white">
-      <NavBody>
-        <NavItems items={navItems} />
-      </NavBody>
-    </Navbar>
+      <Navbar className="p-4 bg-black border-white">
+        <NavBody>
+          <NavItems items={navItems} />
+        </NavBody>
+      </Navbar>
     </div>
   )
 }
