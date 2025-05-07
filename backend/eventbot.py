@@ -123,22 +123,56 @@ system_prompt = f"""
 """
 
 
-messages = [
-    {"role": "system", "content": system_prompt},
-]
-while True: 
-    user_query = input("> ")
-    messages.append({"role": "user", "content": user_query})
 
+# while True: 
+#     user_query = input("> ")
+#     messages.append({"role": "user", "content": user_query})
+
+
+chat_memory = [
+    {"role": "system", "content": system_prompt}
+]
+
+@app.route("/")
+def hello_world():
+    res = {'message' : "Hello from BE"}
+    return jsonify(res)
+
+@app.route("/upload", methods=["POST"])
+def fileUpload():
+    if request.method == "POST":
+        if 'resume' not in request.files:
+            return jsonify({"error": "No file found", "data": str(request.files)}), 400
+
+        file = request.files['resume']
+
+        if file.filename == '':
+            return jsonify({"error": "Empty filename"}), 400
+
+        filename = secure_filename(file.filename)
+        print(filename)
+        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+        return jsonify({"message": "File successfully uploaded", "filename": filename})
+
+
+@app.route("/chat", methods=["POST"])
+def chatting():
+
+    user_query = request.json.get("message", "")
+
+    if not user_query:
+        return jsonify({"error": "Missing message"}), 400
+
+    chat_memory.append({"role": "user", "content": user_query})
     while True: 
         response = client.chat.completions.create(
             model="gpt-4o",
             response_format={"type": "json_object"},
-            messages=messages
+            messages=chat_memory
         )
 
         parsed_output = json.loads(response.choices[0].message.content)
-        messages.append({"role": "assistant", "content": json.dumps(parsed_output)})
+        chat_memory.append({"role": "assistant", "content": json.dumps(parsed_output)})
 
         if parsed_output.get("step") == "plan":
             print(f"🧠: {parsed_output.get('content')}")
@@ -155,32 +189,12 @@ while True:
                     output = tool_fn(**tool_input)
                 else:
                     output = tool_fn(tool_input)
-                messages.append({ "role": "assistant", "content": json.dumps({"step": "observe", "output": output}) })
+                chat_memory.append({ "role": "assistant", "content": json.dumps({"step": "observe", "output": output}) })
                 continue
 
         if parsed_output.get("step") == "output":
             print(f"🤖: {parsed_output.get('content')}")
-            break
+            return jsonify({"message": parsed_output.get("content")})
+            # break
 
-# @app.route("/")
-# def hello_world():
-#     res = {'message' : "Hello from BE"}
-#     return jsonify(res)
-
-# @app.route("/upload", methods=["POST"])
-# def fileUpload():
-#     if request.method == "POST":
-#         if 'resume' not in request.files:
-#             return jsonify({"error": "No file found", "data": str(request.files)}), 400
-
-#         file = request.files['resume']
-
-#         if file.filename == '':
-#             return jsonify({"error": "Empty filename"}), 400
-
-#         filename = secure_filename(file.filename)
-#         print(filename)
-#         file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-#         return jsonify({"message": "File successfully uploaded", "filename": filename})
-
-# app.run(debug=True)
+app.run(debug=True)
