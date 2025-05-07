@@ -23,11 +23,13 @@ function App() {
   }, []);
 
   return (
-    <BackgroundLines className="bg-black text-white">
+    // <BackgroundLines className="bg-black text-white">
+    <>
       <Header />
       <Outlet />
       <Footer />
-    </BackgroundLines>
+    </>
+    // </BackgroundLines>
   );
 }
 
