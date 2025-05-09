@@ -64,34 +64,17 @@ mem_client = Memory.from_config(config)
 qdrant_client = QdrantClient(host="localhost", port=6333)
 
 
-# def search_resume(query):
-#     print(query)
-#     try:
-#         if not query:
-#             return {"answer": f"Sorry, I couldn't find anyone matching that name."}
-        
-#         results = mem_client.search(user_id=query.lower().strip())
-
-#         if not results or not results['results']:
-#             return {"answer": f"Sorry, I couldn't find any results for '{query}'."}
-#         print(results)
-#         return {"answer": results['results'][0]['message']['content']}
-    
-#     except Exception as e:
-#         print("Error in search_resume:", e)
-#         return {"answer": f"Something went wrong while searching. Please try again later."}
-
-# driver = GraphDatabase.driver("bolt://localhost:7687", auth=("neo4j", os.environ.get("NEO4J_PASSWORD")))
-
+# Neo4j Connection
 graph = Neo4jGraph(
-    url="bolt://localhost:7687",
+    url="bolt://localhost:7687",  # Neo4j local host URL
     username="neo4j",
-    password=os.environ.get("NEO4J_PASSWORD")
+    password=os.environ.get("NEO4J_PASSWORD")  # Ensure this password is stored in your environment variables
 )
 
-graph.refresh_schema()  # Optional: helps LangChain understand your node/relationship names
+# Refresh schema (optional, but good for understanding node/relationship structure)
+graph.refresh_schema()
 
-# Create QA chain
+# Create the QA Chain (for querying the Neo4j graph)
 cypher_chain = GraphCypherQAChain.from_llm(
     graph=graph,
     cypher_llm=ChatOpenAI(temperature=0, model="gpt-4o"),
@@ -100,35 +83,23 @@ cypher_chain = GraphCypherQAChain.from_llm(
     verbose=True,
     allow_dangerous_requests=True
 )
-# mem_result = mem_client.search(query="who is mubashir", user_id="mubashir")
-# memories = "\n".join([m["memory"] for m in mem_result.get("results")])
-# print(f"\n\nMEMORY:\n\n{memories}\n\n")
-# def search_resume(query, user_id):
-    # print(f"Searching for: {query}")
-    # try:
-    #     print(f"Searching in graph with: {query}")
-    #     result = cypher_chain.run({query})
-    #     print("Graph answer:", result)
-    #     return result
-    # except Exception as e:
-    #     print(f"LangChain Graph QA error: {e}")
-    #     return "Error while searching in the knowledge graph."
-    
 
-# def search_resume(query, user_id):
-#     # query = input.get("name", "") or " ".join(input.get("skills", []) + input.get("interests", []))
-#     # user_id = input.get("user_id", "default_user")  # Replace with actual logic if needed
-#     mem_result = mem_client.search(query, user_id)
-#     print(query)
-#     print(user_id)
-#     print(mem_client)
-#     print("mem_result", mem_result)
-
-#     memories = "\n".join([m["memory"] for m in mem_result.get("results")])
-#     print(f"\n\nMEMORY:\n\n{memories}\n\n")
-#     return {"answer": memories if memories else "No matching memories found."}
-
-
+# Initialize the Neo4j driver
+driver = GraphDatabase.driver("bolt://localhost:7687", auth=("neo4j", os.environ.get("NEO4J_PASSWORD")))
+def fetch_relationships():
+    with driver.session() as session:
+        result = session.run("MATCH p=()-[r]->() RETURN p LIMIT 10000")
+        relationships = []
+        for record in result:
+            path = record["p"]
+            for rel in path.relationships:
+                relationships.append({
+                    "start_node": dict(rel.start_node.items()),
+                    "end_node": dict(rel.end_node.items()),
+                    "type": rel.type,
+                    "properties": dict(rel.items())
+                })
+        return relationships
 
 system_prompt = f"""
     Hey you are a helpful, user friendly AI assistant, you will help workshop participants with
@@ -210,16 +181,6 @@ system_prompt = f"""
 """
 
 
-
-# while True: 
-#     user_query = input("> ")
-#     messages.append({"role": "user", "content": user_query})
-
-
-
-
-
-
 @app.route("/")
 def hello_world():
     res = {'message' : "Hello from BE"}
@@ -253,7 +214,7 @@ def fileUpload():
 
             print("Extracted resume text:", resume_text[:500])
             # STEP 2: Store knowledge into Neo4j via mem0
-            mem_client.add(
+            res = mem_client.add(
                 messages=[
                     {"role": "system", "content": "You are an extractor that turns resumes into structured graph facts. Extract key information like name, email, phone, skills, education, projects, and connect them as a knowledge graph."},
                     {"role": "user", "content": resume_text}
@@ -261,6 +222,7 @@ def fileUpload():
                 user_id=name.lower().strip(),
                 metadata={"filename": filename}
             )
+            print("Mem0 response: ", res)
 
             return jsonify({"message": "Resume stored successfully", "filename": filename, "name": name})
 
@@ -314,24 +276,44 @@ def chatting():
 
     memories = []
 
-    print(memories)
 
-    # Retrieve all points from the 'memories' collection
-    points = qdrant_client.scroll(collection_name="mem0", scroll_filter=None, limit=10000)
+    # # Retrieve all points from the 'memories' collection
+    # points = qdrant_client.scroll(collection_name="mem0", scroll_filter=None, limit=10000)
 
-    # Extract unique user_ids from the payloads
-    user_ids = set()
-    for point in points[0]:
-        payload = point.payload
-        if 'user_id' in payload:
-            user_ids.add(payload['user_id'])
+    # # Extract unique user_ids from the payloads
+    # user_ids = set()
+    # for point in points[0]:
+    #     payload = point.payload
+    #     if 'user_id' in payload:
+    #         user_ids.add(payload['user_id'])
 
-    # Retrieve all memories for each user_id
-    for user_id in user_ids:
-        each_memory = mem_client.get_all(user_id=user_id)
-        memories.append(each_memory)
-        # print(f"Memories for {user_id}: {memories}")
+    # # Retrieve all memories for each user_id
+    # for user_id in user_ids:
+    #     each_memory = mem_client.get_all(user_id=user_id)
+    #     memories.append(each_memory)
+    #     # print(f"Memories for {user_id}: {memories}")
     
+    # print(memories)
+    # graph_data = mem_client.get_all(enable_graph=True)
+    # relationships = []
+    # for record in graph_data:
+    #     source = record.get("source")
+    #     relation = record.get("relation")
+    #     target = record.get("target")
+    #     relationships.append({"source": source, "relation": relation, "target": target})
+    # Execute the Cypher query to retrieve all relationships
+    # graph_data = graph.query("MATCH p=()-[r]->() RETURN p LIMIT 10000")
+
+    # # Optional: Convert the result to a list for further processing
+    # graph_data_list = list(graph_data)
+
+    # # Now, you can use graph_data_list as needed in your application
+    # Execute the Cypher query
+    result = graph.query("MATCH p=()-[r]->() RETURN p LIMIT 10000")
+        
+    # relationships = fetch_relationships()
+    # print("Relationships: ", relationships)
+    print(result.get)
 
     final_prompt = f"""
         {system_prompt}
@@ -339,7 +321,7 @@ def chatting():
         here is the memory of all the users present in the event, don't disclose their personal info such as mobile numbers etc, just share their professional info with others when asked, this is a big responsibility in your hands
         If user asks about any other user if he/she is attending this event or present at this event, then search them in this memories, if you find them then respond according to their query.
 
-        {memories}
+        # {relationships}
     """
 
     chat_memory = [
@@ -350,40 +332,44 @@ def chatting():
 
     if not user_query:
         return jsonify({"error": "Missing message"}), 400
+    
+    if "find" in user_query or "search" in user_query:  # Example query check
+        response = cypher_chain.run(user_query)  # Running the query using LangChain
+        chat_memory.append({"role": "assistant", "content": response})
+    else:
+        chat_memory.append({"role": "user", "content": user_query})
+        while True: 
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                response_format={"type": "json_object"},
+                messages=chat_memory,
+                # tools=available_tools
+            )
 
-    chat_memory.append({"role": "user", "content": user_query})
-    while True: 
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            response_format={"type": "json_object"},
-            messages=chat_memory,
-            # tools=available_tools
-        )
+            parsed_output = json.loads(response.choices[0].message.content)
+            chat_memory.append({"role": "assistant", "content": json.dumps(parsed_output)})
 
-        parsed_output = json.loads(response.choices[0].message.content)
-        chat_memory.append({"role": "assistant", "content": json.dumps(parsed_output)})
-
-        if parsed_output.get("step") == "plan":
-            print(f"🧠: {parsed_output.get('content')}")
-            continue
-
-        if parsed_output.get("step") == "action":
-            tool_name =  parsed_output.get("function")
-            tool_input = parsed_output.get("input")
-
-            if available_tools.get(tool_name, False) != False: 
-                # output = available_tools[tool_name].get("fn")(tool_input)
-                tool_fn = available_tools[tool_name]["fn"]
-                if isinstance(tool_input, dict):
-                    output = tool_fn(**tool_input)
-                else:
-                    output = tool_fn(tool_input)
-                chat_memory.append({ "role": "assistant", "content": json.dumps({"step": "observe", "output": output}) })
+            if parsed_output.get("step") == "plan":
+                print(f"🧠: {parsed_output.get('content')}")
                 continue
 
-        if parsed_output.get("step") == "output":
-            print(f"🤖: {parsed_output.get('content')}")
-            return jsonify({"message": parsed_output.get("content")})
-            # break
+            if parsed_output.get("step") == "action":
+                tool_name =  parsed_output.get("function")
+                tool_input = parsed_output.get("input")
+
+                if available_tools.get(tool_name, False) != False: 
+                    # output = available_tools[tool_name].get("fn")(tool_input)
+                    tool_fn = available_tools[tool_name]["fn"]
+                    if isinstance(tool_input, dict):
+                        output = tool_fn(**tool_input)
+                    else:
+                        output = tool_fn(tool_input)
+                    chat_memory.append({ "role": "assistant", "content": json.dumps({"step": "observe", "output": output}) })
+                    continue
+
+            if parsed_output.get("step") == "output":
+                print(f"🤖: {parsed_output.get('content')}")
+                return jsonify({"message": parsed_output.get("content")})
+                # break
 
 app.run(debug=True)

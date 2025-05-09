@@ -24,11 +24,11 @@ function App() {
 
   return (
     // <BackgroundLines className="bg-black text-white">
-    <>
+    <div className="bg-black text-white">
       <Header />
       <Outlet />
       <Footer />
-    </>
+    </div>
     // </BackgroundLines>
   );
 }

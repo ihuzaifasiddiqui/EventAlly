@@ -10,9 +10,9 @@ const Header = () => {
   ]
   return (
     <div>
-    <Navbar className="p-4 border-white">
+    <Navbar className="p-4 text-white">
       <NavBody>
-        <NavItems items={navItems} />
+        <NavItems items={navItems}/>
       </NavBody>
     </Navbar>
     </div>

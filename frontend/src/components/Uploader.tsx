@@ -58,18 +58,21 @@ const Uploader = () => {
         action=""
         encType="multipart/form-data"
         onSubmit={fileSubmit}
-        className="flex flex-col "
+        className="flex flex-col border border-white p-4 rounded-xl"
       >
         {/* <FileUpload onChange={()=> handleFileChange}/> */}
-        <input
-          type="text"
-          name="name"
-          placeholder="Enter your name"
-          required
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="border-2 p-2"
-        />
+        <div className="flex flex-col items-start justify-start">
+          <label htmlFor="name" className="px-2">Enter your name</label>
+          <input
+            type="text"
+            name="name"
+            placeholder="Enter your name"
+            required
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="border-2 p-2 rounded-lg my-2"
+          />
+        </div>
         <input
           type="file"
           name="resume"
@@ -83,7 +86,7 @@ const Uploader = () => {
               Selected file: {file.name} {file.size} bytes
             </p>
             <button
-              className="bg-black px-3 py-2 my-2 text-white rounded-lg cursor-pointer"
+              className="bg-white px-3 py-2 my-2 text-black rounded-lg cursor-pointer"
               type="submit"
             >
               Upload File
