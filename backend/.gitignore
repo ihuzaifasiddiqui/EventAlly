@@ -1,3 +1,3 @@
 .env
 /eventEnv
-docker-compose.graph.yml
+/docker-compose.graph.yml
