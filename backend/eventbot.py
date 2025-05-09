@@ -9,6 +9,20 @@ import os
 import json
 import requests
 import pytz
+import fitz
+
+from mem0 import Memory
+from neo4j import GraphDatabase
+from qdrant_client import QdrantClient
+from langchain.tools import tool
+
+# from langchain.chains import GraphCypherQAChain
+# from langchain.chat_models import ChatOpenAI
+# from langchain.graphs import Neo4jGraph
+
+from langchain_neo4j import GraphCypherQAChain, Neo4jGraph
+from langchain_openai import ChatOpenAI
+
 
 load_dotenv()
 
@@ -23,37 +37,98 @@ CORS(app)
 
 app.config['UPLOAD_FOLDER'] = tempfile.gettempdir()
 
-def get_current_time_ist(_input=None):
-    ist = pytz.timezone('Asia/Kolkata')
-    now = datetime.now(ist)
-    print(now.strftime("%Y-%m-%d %H:%M:%S"))
-    return now.strftime("%Y-%m-%d %H:%M:%S")
+# OPENAI_KEY = os.environ.get("OPENAI_API_KEY")
+QDRANT_HOST = "localhost"
 
-def submit_feedback_to_google_forms(name, experience, rating):
-    print("🔨Tool called: submit_feedback_to_google_forms")
-    form_post_url = 'https://docs.google.com/forms/d/e/1FAIpQLSefrkNNYydNTp-hQwBapGP1lg1uZP8G2ghSE5GSeaNere06Tw/formResponse'
-    form_data = {
-        "entry.1274867366": name,
-        "entry.1546935728": experience,
-        "entry.1774645751": rating
-    }
-    try:
-        res = requests.post(form_post_url, data=form_data)
-        print(res.content)
-        return "✅ Feedback submitted successfully!" if res.status_code == 200 else "❌ Failed to submit feedback."
-    except Exception as e:
-        return f"❌ Error submitting feedback: {e}"
-
-available_tools = {
-    "get_current_time_ist": {
-        "fn": get_current_time_ist,
-        "description": "a tool to access the current time of specific timezone, so that user can know how much time is left for so and so event"
+config = {
+    "version" : "v1.1",
+    "embedder" : {
+        "provider" : "openai",
+        "config" : {"api_key" : os.environ.get("OPENAI_API_KEY"), "model" : "text-embedding-3-small"}
     },
-    "submit_feedback_to_google_forms": {
-        "fn": submit_feedback_to_google_forms,
-        "description": "a feedbackBot, a tool that collects user feedback inputs of name, experience summary, and numerical rating (1-5)"
+    "llm" : {"provider" : "openai", "config" : {"api_key" : os.environ.get("OPENAI_API_KEY"), "model" : "gpt-4o"}},
+    "vector_store" : {
+        "provider" : "qdrant",
+        "config" : {
+            "host" : QDRANT_HOST,
+            "port" : 6333
+        }
+    },
+    "graph_store" : {
+        "provider" : "neo4j",
+        "config" : {"url": os.environ.get("NEO4J_URL"), "username" : os.environ.get("NEO4J_USERNAME"), "password" : os.environ.get("NEO4J_PASSWORD")}
     }
 }
+
+mem_client = Memory.from_config(config)
+qdrant_client = QdrantClient(host="localhost", port=6333)
+
+
+# def search_resume(query):
+#     print(query)
+#     try:
+#         if not query:
+#             return {"answer": f"Sorry, I couldn't find anyone matching that name."}
+        
+#         results = mem_client.search(user_id=query.lower().strip())
+
+#         if not results or not results['results']:
+#             return {"answer": f"Sorry, I couldn't find any results for '{query}'."}
+#         print(results)
+#         return {"answer": results['results'][0]['message']['content']}
+    
+#     except Exception as e:
+#         print("Error in search_resume:", e)
+#         return {"answer": f"Something went wrong while searching. Please try again later."}
+
+# driver = GraphDatabase.driver("bolt://localhost:7687", auth=("neo4j", os.environ.get("NEO4J_PASSWORD")))
+
+graph = Neo4jGraph(
+    url="bolt://localhost:7687",
+    username="neo4j",
+    password=os.environ.get("NEO4J_PASSWORD")
+)
+
+graph.refresh_schema()  # Optional: helps LangChain understand your node/relationship names
+
+# Create QA chain
+cypher_chain = GraphCypherQAChain.from_llm(
+    graph=graph,
+    cypher_llm=ChatOpenAI(temperature=0, model="gpt-4o"),
+    qa_llm=ChatOpenAI(temperature=0, model="gpt-3.5-turbo"),
+    validate_cypher=True,
+    verbose=True,
+    allow_dangerous_requests=True
+)
+# mem_result = mem_client.search(query="who is mubashir", user_id="mubashir")
+# memories = "\n".join([m["memory"] for m in mem_result.get("results")])
+# print(f"\n\nMEMORY:\n\n{memories}\n\n")
+# def search_resume(query, user_id):
+    # print(f"Searching for: {query}")
+    # try:
+    #     print(f"Searching in graph with: {query}")
+    #     result = cypher_chain.run({query})
+    #     print("Graph answer:", result)
+    #     return result
+    # except Exception as e:
+    #     print(f"LangChain Graph QA error: {e}")
+    #     return "Error while searching in the knowledge graph."
+    
+
+# def search_resume(query, user_id):
+#     # query = input.get("name", "") or " ".join(input.get("skills", []) + input.get("interests", []))
+#     # user_id = input.get("user_id", "default_user")  # Replace with actual logic if needed
+#     mem_result = mem_client.search(query, user_id)
+#     print(query)
+#     print(user_id)
+#     print(mem_client)
+#     print("mem_result", mem_result)
+
+#     memories = "\n".join([m["memory"] for m in mem_result.get("results")])
+#     print(f"\n\nMEMORY:\n\n{memories}\n\n")
+#     return {"answer": memories if memories else "No matching memories found."}
+
+
 
 system_prompt = f"""
     Hey you are a helpful, user friendly AI assistant, you will help workshop participants with
@@ -93,6 +168,16 @@ system_prompt = f"""
     Use friendly tone and confirm submissions clearly.
 
     Also you can use the current time to help users know what session is going on, when lunch is, or how much time is left.
+    Don't leave the user with no response, you're there to help them - highly important
+
+    For example
+    You are working with a Neo4j graph database. The schema includes:
+        - Node labels: Person, Company
+        - Properties for Person: user_id, name, skills, email
+        - Properties for Company: name, industry
+        - Relationship types: WORKS_AT, KNOWS
+
+
 
     Rules:
     - Follow the output JSON format
@@ -110,9 +195,11 @@ system_prompt = f"""
     Available tools: 
         - get_current_time_ist: a tool to access the current time of specific timezone, so that user can know how much time is left for so and so event.
         - submit_feedback_to_google_forms(name="Alice", experience="Great event!", rating=5): a feedbackBot, a tool that collects user feedback in steps of name, experience summary, and numerical rating (1-5)
-
     - If a function needs multiple inputs, return them as a JSON object inside "input". For example: {{ "step": "action", "function": "submit_feedback_to_google_forms", "input": {{ "name": "Ali", "experience": "Loved it!", "rating": 5 }} }}
-
+    
+    Rules:
+        - Never ever send an error response 500 or related to it, be always positive, you can do it, be in the context of this event.
+        - Whatever it be, but don't spread false information, don't make up things when you don't know
     Example: 
         User query: What is the weather of chicago?
         Output: {{ "step": "plan", "content": "The user is interested in the weather of chicago" }}
@@ -129,9 +216,9 @@ system_prompt = f"""
 #     messages.append({"role": "user", "content": user_query})
 
 
-chat_memory = [
-    {"role": "system", "content": system_prompt}
-]
+
+
+
 
 @app.route("/")
 def hello_world():
@@ -141,6 +228,11 @@ def hello_world():
 @app.route("/upload", methods=["POST"])
 def fileUpload():
     if request.method == "POST":
+
+        name = request.form.get("name")
+        if not name:
+            return jsonify({"error": "Name is required"}), 400
+
         if 'resume' not in request.files:
             return jsonify({"error": "No file found", "data": str(request.files)}), 400
 
@@ -151,14 +243,110 @@ def fileUpload():
 
         filename = secure_filename(file.filename)
         print(filename)
-        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-        return jsonify({"message": "File successfully uploaded", "filename": filename})
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(file_path)
+
+        try:
+            # STEP 1: Extract text from PDF
+            with fitz.open(file_path) as doc:
+                resume_text = "\n".join(page.get_text() for page in doc)
+
+            print("Extracted resume text:", resume_text[:500])
+            # STEP 2: Store knowledge into Neo4j via mem0
+            mem_client.add(
+                messages=[
+                    {"role": "system", "content": "You are an extractor that turns resumes into structured graph facts. Extract key information like name, email, phone, skills, education, projects, and connect them as a knowledge graph."},
+                    {"role": "user", "content": resume_text}
+                ],
+                user_id=name.lower().strip(),
+                metadata={"filename": filename}
+            )
+
+            return jsonify({"message": "Resume stored successfully", "filename": filename, "name": name})
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return jsonify({"error": "Failed to process resume", "details": str(e)}), 500
+        finally:
+            if os.path.exists(file_path):
+                os.remove(file_path)
 
 
 @app.route("/chat", methods=["POST"])
 def chatting():
 
-    user_query = request.json.get("message", "")
+    def get_current_time_ist(_input=None):
+        ist = pytz.timezone('Asia/Kolkata')
+        now = datetime.now(ist)
+        print(now.strftime("%Y-%m-%d %H:%M:%S"))
+        return now.strftime("%Y-%m-%d %H:%M:%S")
+
+    def submit_feedback_to_google_forms(name, experience, rating):
+        print("🔨Tool called: submit_feedback_to_google_forms")
+        form_post_url = 'https://docs.google.com/forms/d/e/1FAIpQLSefrkNNYydNTp-hQwBapGP1lg1uZP8G2ghSE5GSeaNere06Tw/formResponse'
+        form_data = {
+            "entry.1274867366": name,
+            "entry.1546935728": experience,
+            "entry.1774645751": rating
+        }
+        try:
+            res = requests.post(form_post_url, data=form_data)
+            print(res.content)
+            return "✅ Feedback submitted successfully!" if res.status_code == 200 else "❌ Failed to submit feedback."
+        except Exception as e:
+            return f"❌ Error submitting feedback: {e}"
+
+    available_tools = {
+        "get_current_time_ist": {
+            "fn": get_current_time_ist,
+            "description": "a tool to access the current time of specific timezone, so that user can know how much time is left for so and so event"
+        },
+        "submit_feedback_to_google_forms": {
+            "fn": submit_feedback_to_google_forms,
+            "description": "a feedbackBot, a tool that collects user feedback inputs of name, experience summary, and numerical rating (1-5)"
+        },
+        # "search_resume": {
+        #     "fn": search_resume,
+        #     "description": "Searches for a person's resume information based on the provided query and user ID."
+        # }
+    }
+
+    memories = []
+
+    print(memories)
+
+    # Retrieve all points from the 'memories' collection
+    points = qdrant_client.scroll(collection_name="mem0", scroll_filter=None, limit=10000)
+
+    # Extract unique user_ids from the payloads
+    user_ids = set()
+    for point in points[0]:
+        payload = point.payload
+        if 'user_id' in payload:
+            user_ids.add(payload['user_id'])
+
+    # Retrieve all memories for each user_id
+    for user_id in user_ids:
+        each_memory = mem_client.get_all(user_id=user_id)
+        memories.append(each_memory)
+        # print(f"Memories for {user_id}: {memories}")
+    
+
+    final_prompt = f"""
+        {system_prompt}
+
+        here is the memory of all the users present in the event, don't disclose their personal info such as mobile numbers etc, just share their professional info with others when asked, this is a big responsibility in your hands
+        If user asks about any other user if he/she is attending this event or present at this event, then search them in this memories, if you find them then respond according to their query.
+
+        {memories}
+    """
+
+    chat_memory = [
+        {"role": "system", "content": final_prompt}
+    ]
+
+    user_query = request.json.get("message", "").strip()
 
     if not user_query:
         return jsonify({"error": "Missing message"}), 400
@@ -168,7 +356,8 @@ def chatting():
         response = client.chat.completions.create(
             model="gpt-4o",
             response_format={"type": "json_object"},
-            messages=chat_memory
+            messages=chat_memory,
+            # tools=available_tools
         )
 
         parsed_output = json.loads(response.choices[0].message.content)
