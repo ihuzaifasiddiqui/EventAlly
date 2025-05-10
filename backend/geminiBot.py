@@ -1,5 +1,5 @@
 from flask import Flask, jsonify, request
-from openai import OpenAI
+from google.generativeai import GenerativeModel, configure
 from dotenv import load_dotenv
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
@@ -17,9 +17,8 @@ from qdrant_client import QdrantClient, models
 
 load_dotenv()
 
-client = OpenAI(
-    api_key=os.environ.get("OPENAI_API_KEY"),
-)
+# Configure Gemini API
+configure(api_key=os.environ.get("GEMINI_API_KEY"))
 
 app = Flask(__name__)
 CORS(app)
@@ -32,13 +31,17 @@ QDRANT_COLLECTION_NAME = "resumes"
 
 qdrant_client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
 
+# Initialize Gemini models
+embedding_model = GenerativeModel("embedding-001")
+chat_model = GenerativeModel("gemini-1.5-flash")  # You can also use "gemini-2.0-flash" if available
+
 # Ensure the Qdrant collection exists
 def create_qdrant_collection():
     collections = qdrant_client.get_collections().collections
     if QDRANT_COLLECTION_NAME not in [col.name for col in collections]:
         qdrant_client.create_collection(
             collection_name=QDRANT_COLLECTION_NAME,
-            vectors_config=models.VectorParams(size=1536, distance=models.Distance.COSINE),
+            vectors_config=models.VectorParams(size=768, distance=models.Distance.COSINE),  # Gemini embeddings are 768 dimensions
         )
 
 create_qdrant_collection()
@@ -60,8 +63,13 @@ def get_all_attendees_qdrant():
 def search_resume_qdrant(query, user_id=None):
     """Search for information in resumes using Qdrant."""
     try:
-        query_embedding = client.embeddings.create(input=[query], model="text-embedding-3-small").data[0].embedding
-
+        # Get embeddings using Gemini instead of OpenAI
+        response = embedding_model.embed_content(
+            content=query,
+            task_type="retrieval_query"
+        )
+        query_embedding = response.embedding
+        
         search_filter = None
         if user_id:
             search_filter = models.Filter(must=[models.FieldCondition(key="user_id", match=models.MatchValue(value=user_id))])
@@ -177,9 +185,9 @@ system_prompt = f"""
                 - Call `submit_feedback_to_google_forms` with the collected data
                 - Clear `feedback_data`
         - Always acknowledge with a friendly message after each step.
-        - Never return resume results when `feedback_in_progress` is true, even if the user’s name matches a resume entry.
+        - Never return resume results when `feedback_in_progress` is true, even if the user's name matches a resume entry.
 
-    If the user inputs their own name (e.g., when asking about resumes), always pass their `user_id` in the `search_resume_qdrant` tool so they don’t receive results about themselves.
+    If the user inputs their own name (e.g., when asking about resumes), always pass their `user_id` in the `search_resume_qdrant` tool so they don't receive results about themselves.
 
     Rules:
         - Never ever send an error response 500 or related to it, be always positive, you can do it, be in the context of this event.
@@ -197,7 +205,7 @@ system_prompt = f"""
 
 @app.route("/")
 def hello_world():
-    res = {'message' : "Hello from BE with Qdrant"}
+    res = {'message' : "Hello from BE with Qdrant (Gemini version)"}
     return jsonify(res)
 
 @app.route("/upload", methods=["POST"])
@@ -240,10 +248,16 @@ def fileUpload():
 
             print(f"Extracted resume text sample: {resume_text[:200]}...")
 
-            # STEP 2: Store in Qdrant
+            # STEP 2: Store in Qdrant using Gemini embeddings
             try:
                 user_id = name.lower().strip().replace(" ", "_")
-                embedding = client.embeddings.create(input=[resume_text], model="text-embedding-3-small").data[0].embedding
+                
+                # Get embeddings using Gemini instead of OpenAI
+                embedding_response = embedding_model.embed_content(
+                    content=resume_text,
+                    task_type="retrieval_document"
+                )
+                embedding = embedding_response.embedding
 
                 qdrant_client.upsert(
                     collection_name=QDRANT_COLLECTION_NAME,
@@ -286,7 +300,6 @@ def fileUpload():
 
 @app.route("/chat", methods=["POST"])
 def chatting():
-
     
     available_tools = {
         "get_current_time_ist": {
@@ -327,11 +340,10 @@ def chatting():
         - name = {current_user}
         - rating = (from user input)
         - summary = (from user input)
-
     """
 
     chat_memory = [
-        {"role": "system", "content": final_prompt}
+        {"role": "user", "parts": [final_prompt]}
     ]
 
     user_query = request.json.get("message", "").strip()
@@ -339,43 +351,48 @@ def chatting():
     if not user_query:
         return jsonify({"error": "Missing message"}), 400
 
-    chat_memory.append({"role": "user", "content": user_query})
+    chat_memory.append({"role": "model", "parts": ["I'll help workshop participants with information about the event."]})
+    chat_memory.append({"role": "user", "parts": [user_query]})
 
     while True:
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            response_format={"type": "json_object"},
-            messages=chat_memory
-        )
-
         try:
-            parsed_output = json.loads(response.choices[0].message.content)
-            chat_memory.append({"role": "assistant", "content": json.dumps(parsed_output)})
+            response = chat_model.generate_content(
+                chat_memory,
+                generation_config={
+                    "response_mime_type": "application/json"
+                }
+            )
 
-            if parsed_output.get("step") == "plan":
-                print(f"🧠: {parsed_output.get('content')}")
-                continue
+            # Extract and parse the JSON response
+            try:
+                parsed_output = json.loads(response.text)
+                chat_memory.append({"role": "model", "parts": [json.dumps(parsed_output)]})
 
-            if parsed_output.get("step") == "action":
-                tool_name = parsed_output.get("function")
-                tool_input = parsed_output.get("input")
-
-                if available_tools.get(tool_name):
-                    tool_fn = available_tools[tool_name]["fn"]
-                    if isinstance(tool_input, dict):
-                        output = tool_fn(**tool_input)
-                    else:
-                        output = tool_fn(tool_input)
-                    chat_memory.append({"role": "assistant", "content": json.dumps({"step": "observe", "output": output})})
+                if parsed_output.get("step") == "plan":
+                    print(f"🧠: {parsed_output.get('content')}")
                     continue
 
-            if parsed_output.get("step") == "output":
-                print(f"🤖: {parsed_output.get('content')}")
-                return jsonify({"message": parsed_output.get("content")})
+                if parsed_output.get("step") == "action":
+                    tool_name = parsed_output.get("function")
+                    tool_input = parsed_output.get("input")
 
-        except json.JSONDecodeError as e:
-            print(f"JSON Decode Error: {e}, Content: {response.choices[0].message.content}")
-            return jsonify({"error": "Failed to parse AI response"}), 500
+                    if available_tools.get(tool_name):
+                        tool_fn = available_tools[tool_name]["fn"]
+                        if isinstance(tool_input, dict):
+                            output = tool_fn(**tool_input)
+                        else:
+                            output = tool_fn(tool_input)
+                        chat_memory.append({"role": "model", "parts": [json.dumps({"step": "observe", "output": output})]})
+                        continue
+
+                if parsed_output.get("step") == "output":
+                    print(f"🤖: {parsed_output.get('content')}")
+                    return jsonify({"message": parsed_output.get("content")})
+
+            except json.JSONDecodeError as e:
+                print(f"JSON Decode Error: {e}, Content: {response.text}")
+                return jsonify({"error": "Failed to parse AI response"}), 500
+
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
             return jsonify({"error": "An unexpected error occurred"}), 500

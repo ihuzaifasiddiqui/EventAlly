@@ -18,7 +18,8 @@ const ChatWindow = () => {
         setUserQuery("");
 
         try {
-            const res = await axios.post("http://127.0.0.1:5000/chat", { message: userQuery });
+            const currentUser = localStorage.getItem("current_user"); // 👈 Get the current user
+            const res = await axios.post("http://127.0.0.1:5000/chat", { message: userQuery, user: currentUser });
             console.log(res);
             const botMessage = res.data.message;
             setMessages((prev) => [...prev, {sender: "bot", content: botMessage}]);
