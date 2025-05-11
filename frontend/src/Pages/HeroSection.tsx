@@ -6,7 +6,7 @@ import { LineShadowText } from "@/components/magicui/line-shadow-text";
 
 // style={{ background: "radial-gradient(circle at top, #161d19, #4b405e)"
 
-const Home = () => {
+const HeroSection = () => {
   const nav = useNavigate();
   return (
     <div className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden bg-[url(./assets/gradient_backdrop.png)] bg-cover bg-fixed bg-center bg-no-repeat bg-background">
@@ -36,7 +36,7 @@ const Home = () => {
         </span>
 
         <div className="mt-8">
-          <ShimmerButton className="shadow-2xl px-4 py-2 mt-10">
+          <ShimmerButton className="shadow-2xl px-4 py-2 mt-10" onClick={()=>nav("/chat")}>
             <span className="font-playfair text-center text-sm font-medium leading-none tracking-tight text-white dark:from-white dark:to-slate-900/10 lg:text-2xl">
               Get Started -
             </span>
@@ -47,4 +47,4 @@ const Home = () => {
   );
 };
 
-export default Home;
+export default HeroSection;

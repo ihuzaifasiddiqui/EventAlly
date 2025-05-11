@@ -1,64 +1,87 @@
 import React, { useState, useRef, useEffect } from "react";
 import { SendHorizonal } from "lucide-react";
 import { motion } from "framer-motion";
+import axios from "axios";
+
+type Message = {
+  sender: "user" | "ai";
+  content: string;
+  isTyping?: boolean;
+};
 
 const ChatUI = () => {
-  const [messages, setMessages] = useState([
-    { sender: "ai", text: "Hello! How can I assist you today?", isTyping: false },
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      sender: "ai",
+      content: "Hello! How can I assist you today?",
+      isTyping: false,
+    },
   ]);
   const [input, setInput] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
-  
+
   // New state for typing animation
   const [typingIndex, setTypingIndex] = useState<number | null>(null);
   const [displayText, setDisplayText] = useState<string>("");
-  const typingSpeedRef = useRef<number>(300); // Increased from 200 to 300 milliseconds per word
+  const typingSpeedRef = useRef<number>(100); // Increased from 200 to 300 milliseconds per word
 
-  const sendMessage = () => {
-    if (!input.trim()) return;
+  const sendMessage = async () => {
+    const userMessage = input.trim();
+    if (!userMessage) return;
 
-    const userMsg = { sender: "user", text: input, isTyping: false };
-    setMessages((prev) => [...prev, userMsg]);
+    setMessages((prev) => [
+      ...prev,
+      { sender: "user", content: userMessage, isTyping: true },
+    ]);
     setInput("");
 
-    // Simulate AI response after 0.5s
-    setTimeout(() => {
-      const aiResponse = "I'm your AI assistant. Let me help you with that!";
+    try {
+      const currentUser = localStorage.getItem("current_user");
+      const res = await axios.post("http://127.0.0.1:5000/chat", {
+        message: userMessage,
+        user: currentUser,
+      });
+      console.log(res.data);
+      
+
+      const botResponse = res.data.message;
+
       setMessages((prev) => [
         ...prev,
         {
           sender: "ai",
-          text: aiResponse,
+          content: botResponse,
           isTyping: true,
         },
       ]);
       setTypingIndex(messages.length + 1); // Set index of typing message
       setDisplayText("");
-      
-      // Start typing animation
-      const words = aiResponse.split(" ");
+
+      const words = botResponse.split(" ");
       let currentWordIndex = 0;
-      
+
       const typeNextWord = () => {
         if (currentWordIndex < words.length) {
-          setDisplayText(prev => 
-            prev + (prev ? " " : "") + words[currentWordIndex]
+          setDisplayText(
+            (prev) => prev + (prev ? " " : "") + words[currentWordIndex]
           );
           currentWordIndex++;
           setTimeout(typeNextWord, typingSpeedRef.current);
         } else {
           // Typing finished
           setTypingIndex(null);
-          setMessages(prev => 
-            prev.map((msg, idx) => 
+          setMessages((prev) =>
+            prev.map((msg, idx) =>
               idx === prev.length - 1 ? { ...msg, isTyping: false } : msg
             )
           );
         }
       };
-      
+
       setTimeout(typeNextWord, typingSpeedRef.current);
-    }, 500);
+    } catch (error) {
+      console.error("Error fetching bot response:", error);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -75,9 +98,11 @@ const ChatUI = () => {
         {/* Chat Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent">
           {messages.map((msg, idx) => (
-            <div 
+            <div
               key={idx}
-              className={`flex w-full ${msg.sender === "user" ? "justify-end" : "justify-start"}`}
+              className={`flex w-full ${
+                msg.sender === "user" ? "justify-end" : "justify-start"
+              }`}
             >
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
@@ -89,7 +114,7 @@ const ChatUI = () => {
                     : "bg-gray-700 text-gray-100"
                 }`}
               >
-                {typingIndex === idx ? displayText : msg.text}
+                {typingIndex === idx ? displayText : msg.content}
                 {typingIndex === idx && (
                   <span className="inline-block ml-1 animate-pulse">▌</span>
                 )}
@@ -111,7 +136,7 @@ const ChatUI = () => {
               className="w-full bg-gray-800/50 outline-none text-white placeholder-gray-400 px-4 py-2 rounded-full border border-blue-500/30 text-sm"
             />
           </div>
-          
+
           <motion.button
             whileTap={{ scale: 0.9 }}
             onClick={sendMessage}
