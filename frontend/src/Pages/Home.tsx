@@ -1,5 +1,5 @@
 import HeroSection from './HeroSection';
-import Features from './Features'; // Adjust the path to where your Features component is located
+import Features from './features'; // Adjust the path to where your Features component is located
 
 const Home = () => {
   return (

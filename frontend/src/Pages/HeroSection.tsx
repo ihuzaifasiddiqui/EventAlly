@@ -3,6 +3,7 @@ import { Cover } from "@/components/ui/cover";
 import { useNavigate } from "react-router-dom";
 import { ShimmerButton } from "@/components/magicui/shimmer-button";
 import { LineShadowText } from "@/components/magicui/line-shadow-text";
+import { ChevronRight } from "lucide-react";
 
 // style={{ background: "radial-gradient(circle at top, #161d19, #4b405e)"
 
@@ -36,10 +37,10 @@ const HeroSection = () => {
         </span>
 
         <div className="mt-8">
-          <ShimmerButton className="shadow-2xl px-4 py-2 mt-10" onClick={()=>nav("/chat")}>
-            <span className="font-playfair text-center text-sm font-medium leading-none tracking-tight text-white dark:from-white dark:to-slate-900/10 lg:text-2xl">
-              Get Started -
-            </span>
+          <ShimmerButton className="shadow-2xl px-4 py-4 mt-10" onClick={()=>nav("/chat")}>
+            <div className="flex items-center justify-center font-playfair text-center text-sm font-medium leading-none tracking-tight text-white dark:from-white dark:to-slate-900/10 lg:text-2xl">
+              Get Started <ChevronRight className="ml-1" />
+            </div>
           </ShimmerButton>
         </div>
       </div>
