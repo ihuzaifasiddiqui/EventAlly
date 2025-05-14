@@ -9,9 +9,8 @@ app = Flask(__name__)
 app.secret_key = 'andewalaburger'
 
 # Google OAuth configuration
-google_client_id = '169184802211-78f8un227708pdcicl56lolf27q5k2me.apps.googleusercontent.com'
-google_client_secret = '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'
-
+google_client_id = os.environ.get('GOOGLE_CLIENT_ID')
+google_client_secret = os.environ.get('GOOGLE_CLIENT_SECRET')
 # Configure Google OAuth with flask-dance
 blueprint = make_google_blueprint(
     client_id=google_client_id,
