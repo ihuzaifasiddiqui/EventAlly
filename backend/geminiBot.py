@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, redirect, url_for, session
 from google.generativeai import GenerativeModel, configure
 from dotenv import load_dotenv
 from flask_cors import CORS
@@ -13,7 +13,13 @@ import fitz
 import hashlib
 import numpy as np
 
+import google.generativeai as genai
+
 from qdrant_client import QdrantClient, models
+
+from flask_dance.contrib.google import make_google_blueprint, google
+from flask_dance.consumer import oauth_authorized
+from flask_dance.consumer.storage.session import SessionStorage
 
 load_dotenv()
 
@@ -21,7 +27,26 @@ load_dotenv()
 configure(api_key=os.environ.get("GEMINI_API_KEY"))
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, supports_credentials=True)
+
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+app.secret_key = 'andewalaburger'
+
+# Google OAuth configuration
+google_client_id = os.environ.get('GOOGLE_CLIENT_ID')
+google_client_secret = os.environ.get('GOOGLE_CLIENT_SECRET')
+# Configure Google OAuth with flask-dance
+blueprint = make_google_blueprint(
+    client_id=google_client_id,
+    client_secret=google_client_secret,
+    scope=["openid", 
+           "https://www.googleapis.com/auth/userinfo.profile", 
+           "https://www.googleapis.com/auth/userinfo.email"],
+    redirect_to="after_login",  # Where to redirect after authorization
+    # Important: Don't set a custom redirect_url unless necessary
+)
+app.register_blueprint(blueprint, url_prefix="/login")
+
 
 app.config['UPLOAD_FOLDER'] = tempfile.gettempdir()
 
@@ -33,13 +58,13 @@ qdrant_client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
 
 # Initialize Gemini models
 embedding_model = GenerativeModel("embedding-001")
-chat_model = GenerativeModel("gemini-1.5-flash")  # You can also use "gemini-2.0-flash" if available
+chat_model = GenerativeModel("gemini-2.0-flash")  # You can also use "gemini-2.0-flash" if available
 
 # Ensure the Qdrant collection exists
 def create_qdrant_collection():
     collections = qdrant_client.get_collections().collections
     if QDRANT_COLLECTION_NAME not in [col.name for col in collections]:
-        qdrant_client.create_collection(
+        qdrant_client.recreate_collection(
             collection_name=QDRANT_COLLECTION_NAME,
             vectors_config=models.VectorParams(size=768, distance=models.Distance.COSINE),  # Gemini embeddings are 768 dimensions
         )
@@ -208,6 +233,30 @@ def hello_world():
     res = {'message' : "Hello from BE with Qdrant (Gemini version)"}
     return jsonify(res)
 
+@app.route('/after-login')
+def after_login():
+    if not google.authorized:
+        return redirect(url_for("google.login"))
+
+    resp = google.get("/oauth2/v1/userinfo")
+    if not resp.ok:
+        return jsonify({"error": "Failed to fetch user info"}), 400
+
+    user_info = resp.json()
+    # Optional: create a session, return JWT, etc.
+
+    # Redirect to frontend with user info or token
+    return redirect(f"http://localhost:5173/chat?email={user_info['email']}&name={user_info['name']}")
+
+import re
+
+def extract_linkedin_url(text):
+    """Extract the first LinkedIn URL from resume text."""
+    match = re.search(r"(https?://)?(www\.)?linkedin\.com/in/[^\s)]+", text)
+    if match:
+        return match.group(0).strip()
+    return None
+
 @app.route("/upload", methods=["POST"])
 def fileUpload():
     if request.method == "POST":
@@ -218,85 +267,115 @@ def fileUpload():
             return jsonify({"error": "Name is required"}), 400
 
         if 'resume' not in request.files:
-            print("No resume file found in request:", request.files)
             return jsonify({"error": "No file found", "data": str(request.files)}), 400
 
         file = request.files['resume']
-
         if file.filename == '':
             return jsonify({"error": "Empty filename"}), 400
 
         filename = secure_filename(file.filename)
-        print(f"Processing file: {filename}")
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(file_path)
 
         try:
-            # STEP 1: Extract text from PDF
-            resume_text = ""
-            try:
-                with fitz.open(file_path) as doc:
-                    resume_text = "\n".join(page.get_text() for page in doc)
-                    print(f"Successfully extracted {len(resume_text)} characters from PDF")
-            except Exception as pdf_error:
-                print(f"Error extracting PDF text: {pdf_error}")
-                return jsonify({"error": "Failed to read PDF", "details": str(pdf_error)}), 500
-
+            with fitz.open(file_path) as doc:
+                resume_text = "\n".join(page.get_text() for page in doc)
             if not resume_text.strip():
-                print("Warning: Extracted text is empty")
                 return jsonify({"error": "Failed to extract text from resume"}), 500
 
             print(f"Extracted resume text sample: {resume_text[:200]}...")
 
-            # STEP 2: Store in Qdrant using Gemini embeddings
-            try:
-                user_id = name.lower().strip().replace(" ", "_")
-                
-                # Get embeddings using Gemini instead of OpenAI
-                embedding_response = embedding_model.embed_content(
-                    content=resume_text,
-                    task_type="retrieval_document"
-                )
-                embedding = embedding_response.embedding
+            # 🔍 Extract LinkedIn
+            linkedin_url = extract_linkedin_url(resume_text)
+            print(f"Extracted LinkedIn URL: {linkedin_url}")
 
-                qdrant_client.upsert(
-                    collection_name=QDRANT_COLLECTION_NAME,
-                    points=[
-                        models.PointStruct(
-                            id=int(hashlib.md5(user_id.encode()).hexdigest()[:8], 16),
-                            vector=embedding,
-                            payload={
-                                "user_id": user_id,
-                                "name": name,
-                                "filename": filename,
-                                "text_sample": resume_text[:1000],
-                                "upload_time": datetime.now().isoformat()
-                            }
-                        )
-                    ]
-                )
-                print(f"Successfully added resume to Qdrant for user: {user_id}")
-                return jsonify({
-                    "message": "Resume stored successfully in Qdrant",
-                    "filename": filename,
-                    "name": name,
-                    "user_id": user_id
-                })
+            # 🧠 Embed and store in Qdrant
+            user_id = name.lower().strip().replace(" ", "_")
+            embedding_response = genai.embed_content(
+                model="gemini-embedding-exp-03-07",
+                content=resume_text,
+                task_type="retrieval_document",
+                output_dimensionality=1536
+            )
+            embedding = embedding_response["embedding"]
 
-            except Exception as qdrant_error:
-                print(f"Error adding to Qdrant: {qdrant_error}")
-                return jsonify({"error": "Failed to store in Qdrant", "details": str(qdrant_error)}), 500
+            qdrant_client.upsert(
+                collection_name=QDRANT_COLLECTION_NAME,
+                points=[
+                    models.PointStruct(
+                        id=int(hashlib.md5(user_id.encode()).hexdigest()[:8], 16),
+                        vector=embedding,
+                        payload={
+                            "user_id": user_id,
+                            "name": name,
+                            "filename": filename,
+                            "text_sample": resume_text[:1000],
+                            "upload_time": datetime.now().isoformat(),
+                            "linkedin": linkedin_url  # 👉 Store LinkedIn
+                        }
+                    )
+                ]
+            )
+
+            print(f"Resume added to Qdrant for {user_id}")
+            return jsonify({
+                "message": "Resume stored successfully",
+                "filename": filename,
+                "name": name,
+                "user_id": user_id,
+                "linkedin": linkedin_url
+            })
 
         except Exception as e:
             import traceback
             traceback.print_exc()
-            print(f"General error processing resume: {e}")
             return jsonify({"error": "Failed to process resume", "details": str(e)}), 500
         finally:
             if os.path.exists(file_path):
                 os.remove(file_path)
-                print(f"Removed temporary file: {file_path}")
 
+@app.route("/network")
+def network():
+    points = qdrant_client.scroll(
+        collection_name=QDRANT_COLLECTION_NAME,
+        scroll_filter=None,
+        limit=1000,
+        with_payload=True
+    )[0]
+
+    attendees = []
+    for point in points:
+        payload = point.payload
+        if payload:
+            attendees.append({
+                "user_id": payload.get("user_id"),
+                "name": payload.get("name"),
+                "linkedin": payload.get("linkedin", None)  # 👈 include this
+            })
+
+    return jsonify({"attendees": attendees})
+
+
+@app.route('/check_resume/<username>', methods=['GET'])
+def check_resume(username):
+    try:
+        # Search for any vectors with the username in payload
+        search_result = qdrant_client.scroll(
+            collection_name="resumes",
+            scroll_filter={
+                "must": [
+                    {"key": "name", "match": {"value": username}}
+                ]
+            },
+            limit=1
+        )
+
+        has_uploaded = len(search_result[0]) > 0
+        return jsonify({"uploaded": has_uploaded})
+    
+    except Exception as e:
+        print(f"Error checking resume for {username}: {e}")
+        return jsonify({"uploaded": False, "error": str(e)}), 500
 
 @app.route("/chat", methods=["POST"])
 def chatting():

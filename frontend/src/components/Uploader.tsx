@@ -31,11 +31,11 @@ const Uploader = () => {
       formData.append("resume", file);
       formData.append("name", name);
       try {
-        const res = await axios.post("http://127.0.0.1:5000/upload", formData);
+        const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/upload`, formData);
         const data = await res.data;
         if (data) {
           localStorage.setItem("current_user", name); // 👈 Store the name in localStorage
-          navigate("/chat");
+          navigate("/network");
         } else {
           console.log("Failed to upload resume.");
         }
