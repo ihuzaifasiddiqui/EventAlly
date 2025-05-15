@@ -1,6 +1,6 @@
 import { useLocation } from "react-router-dom"
 import { Navbar, NavBody, NavItems } from "./ui/resizable-navbar"
-import { ChartAreaIcon, Contact, Home, HomeIcon, Network, UploadCloud } from "lucide-react"
+import { ChartAreaIcon, Contact, Home, HomeIcon, Network } from "lucide-react"
 
 const Header = () => {
 

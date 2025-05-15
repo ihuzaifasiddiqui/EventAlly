@@ -95,7 +95,7 @@ export default function Network() {
     );
   }
 
-  const handleCardClick = (userId: string) => {
+  const handleCardClick = (_userId: string) => {
     // Optional: Show detailed profile or resume
   };
 

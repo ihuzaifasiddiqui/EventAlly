@@ -1,6 +1,5 @@
 // import { Particles } from "@/components/magicui/particles";
 import { Cover } from "@/components/ui/cover";
-import { useNavigate } from "react-router-dom";
 import { ShimmerButton } from "@/components/magicui/shimmer-button";
 import { LineShadowText } from "@/components/magicui/line-shadow-text";
 import { ChevronRight } from "lucide-react";
@@ -9,7 +8,6 @@ import axios from "axios";
 // style={{ background: "radial-gradient(circle at top, #161d19, #4b405e)"
 
 const HeroSection = () => {
-  const nav = useNavigate();
   const handleAuth = async () => {
     try {
       const res = await axios.get(`${import.meta.env.VITE_BACKEND_URL}`, {
