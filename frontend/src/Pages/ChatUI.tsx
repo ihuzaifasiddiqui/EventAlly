@@ -3,7 +3,6 @@ import { SendHorizonal } from "lucide-react";
 import { motion } from "framer-motion";
 import axios from "axios";
 import { useLocation } from "react-router-dom";
-import { TypewriterEffect } from "@/components/ui/typewriter-effect";
 
 type Message = {
   sender: "user" | "ai";

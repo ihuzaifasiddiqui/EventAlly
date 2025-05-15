@@ -1,47 +1,8 @@
 import FeaturesSectionDemo from "@/components/features-section-demo-2";
-import { motion } from "framer-motion";
 import {
   Sparkles,
-  CalendarDays,
-  Search,
-  Target,
-  MapPin,
-  Clock4,
-  MessageSquare,
 } from "lucide-react";
 
-const features = [
-  {
-    icon: <CalendarDays className="w-6 h-6 text-cyan-400" />,
-    title: "Instantly Know the Agenda",
-    desc: "Ask “What’s next?” and get real-time session details.",
-  },
-  {
-    icon: <Search className="w-6 h-6 text-purple-400" />,
-    title: "Discover Who’s Who",
-    desc: "EventBot scans resumes (securely) to suggest participants with similar tech interests.",
-  },
-  {
-    icon: <Target className="w-6 h-6 text-pink-400" />,
-    title: "Personalized Session Recommendations",
-    desc: "Get suggestions based on your skills and background.",
-  },
-  {
-    icon: <MapPin className="w-6 h-6 text-yellow-400" />,
-    title: "Location Made Simple",
-    desc: "Ask about directions — EventBot guides you instantly.",
-  },
-  {
-    icon: <Clock4 className="w-6 h-6 text-green-400" />,
-    title: "Stay on Track",
-    desc: "Never miss a beat — updates on breaks, lunch, and more.",
-  },
-  {
-    icon: <MessageSquare className="w-6 h-6 text-red-400" />,
-    title: "No-Form Feedback",
-    desc: "Quick, conversational session feedback — no forms!",
-  },
-];
 
 export default function Features() {
   return (
