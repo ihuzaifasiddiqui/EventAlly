@@ -12,21 +12,21 @@ const HeroSection = () => {
   const nav = useNavigate();
   const handleAuth = async () => {
     try {
-      const res = await axios.get("http://127.0.0.1:5000", {
+      const res = await axios.get(`${import.meta.env.VITE_BACKEND_URL}`, {
         withCredentials: true,
       });
 
       if (res.status === 200 && res.data?.data?.email) {
         console.log("Already logged in:", res.data.data);
-        window.location.href = "http://localhost:5173/chat";
+        window.location.href = `${import.meta.env.VITE_BACKEND_URL}/chat`;
       } else {
-        window.location.href = "http://127.0.0.1:5000/login/google";
+        window.location.href = `${import.meta.env.VITE_BACKEND_URL}/login/google`;
       }
   
     } catch (error) {
       console.error("Auth check failed, redirecting to login...", error);
       // On failure (e.g., 401), trigger login redirect
-      window.location.href = "http://127.0.0.1:5000/login/google";
+      window.location.href = `${import.meta.env.VITE_BACKEND_URL}/login/google`;
     }
   };
   return (

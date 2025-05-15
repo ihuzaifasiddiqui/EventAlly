@@ -1,6 +1,6 @@
 import { useLocation } from "react-router-dom"
 import { Navbar, NavBody, NavItems } from "./ui/resizable-navbar"
-import { ChartAreaIcon, Contact, HomeIcon, Network, UploadCloud } from "lucide-react"
+import { ChartAreaIcon, Contact, Home, HomeIcon, Network, UploadCloud } from "lucide-react"
 
 const Header = () => {
 
@@ -13,16 +13,14 @@ const Header = () => {
     {name: "Network", link: "/network", icon: <Network/>},
   ] : [
     {name: "Home", link: "/", icon: <HomeIcon/>},
-    {name: "Network", link: "/network", icon: <Network/>},
-    {name: "Upload", link: "/upload", icon: <UploadCloud/>},
-    {name: "Chat", link: "/chat", icon: <ChartAreaIcon/>},
+    {name: "About", link: "/", icon: <Home/>},
     {name: "Contact", link: "/", icon: <Contact/>}
   ]
   return (
     <div>
       <Navbar className="p-4 bg-black border-white">
         <NavBody>
-          <NavItems items={navItems} />
+          <NavItems items={navItems}  />
         </NavBody>
       </Navbar>
     </div>

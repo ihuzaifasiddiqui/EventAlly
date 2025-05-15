@@ -6,18 +6,40 @@ import { useNavigate } from "react-router-dom";
 type Attendee = {
   user_id: string;
   name: string;
-  summary: string;
   linkedin?: string;
 };
 
 export default function Network() {
   const [attendees, setAttendees] = useState<Attendee[]>([]);
+  const [hasUploaded, setHasUploaded] = useState<boolean | null>(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const checkResumeStatus = async () => {
+      const currentUser = localStorage.getItem("current_user");
+      if (!currentUser) {
+        setHasUploaded(false);
+        return;
+      }
+
+      try {
+        const res = await axios.get(
+          `${import.meta.env.VITE_BACKEND_URL}/check_resume/${currentUser}`
+        );
+        setHasUploaded(res.data.uploaded);
+      } catch (error) {
+        console.error("Error checking resume status", error);
+        setHasUploaded(false);
+      }
+    };
+
+    checkResumeStatus();
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await axios.get("http://127.0.0.1:5000/network"); // Update with full URL if hosted separately
+        const res = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/network`); // Update with full URL if hosted separately
 
         if (res.data.attendees) {
           const updatedAttendees = res.data.attendees.map((attendee: any) => {
@@ -44,8 +66,34 @@ export default function Network() {
         console.error("Error fetching network data", error);
       }
     };
-    fetchData();
-  }, []);
+    if (hasUploaded) {
+        fetchData();
+      }
+  }, [hasUploaded]);
+
+  if (hasUploaded === false) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen">
+        <h2 className="text-2xl font-semibold mb-4 text-white">
+          Upload your resume to network with like minded people.
+        </h2>
+        <button
+          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+          onClick={() => navigate("/upload")}
+        >
+          Upload Resume
+        </button>
+      </div>
+    );
+  }
+
+  if (hasUploaded === null) {
+    return (
+      <div className="flex justify-center items-center h-screen text-white">
+        Checking your resume status...
+      </div>
+    );
+  }
 
   const handleCardClick = (userId: string) => {
     // Optional: Show detailed profile or resume
@@ -72,17 +120,7 @@ export default function Network() {
               <ExternalLink size={20} />
             </span>
           ) : (
-            <p>No Linkedin found</p>
-          )}
-          {person.summary ? (
-            <p className="text-gray-600 mt-2">{person.summary}</p>
-          ) : (
-            <button
-              className="mt-3 px-4 py-2 bg-blue-600 text-white rounded"
-              onClick={() => navigate("/upload")}
-            >
-              Upload Resume
-            </button>
+            <p className="text-black">No Linkedin found</p>
           )}
         </div>
       ))}

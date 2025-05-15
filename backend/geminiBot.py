@@ -58,7 +58,7 @@ qdrant_client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
 
 # Initialize Gemini models
 embedding_model = GenerativeModel("embedding-001")
-chat_model = GenerativeModel("gemini-1.5-flash")  # You can also use "gemini-2.0-flash" if available
+chat_model = GenerativeModel("gemini-2.0-flash")  # You can also use "gemini-2.0-flash" if available
 
 # Ensure the Qdrant collection exists
 def create_qdrant_collection():
@@ -350,14 +350,32 @@ def network():
             attendees.append({
                 "user_id": payload.get("user_id"),
                 "name": payload.get("name"),
-                "summary": payload.get("text_sample", "")[:500],
                 "linkedin": payload.get("linkedin", None)  # 👈 include this
             })
 
     return jsonify({"attendees": attendees})
 
 
+@app.route('/check_resume/<username>', methods=['GET'])
+def check_resume(username):
+    try:
+        # Search for any vectors with the username in payload
+        search_result = qdrant_client.scroll(
+            collection_name="resumes",
+            scroll_filter={
+                "must": [
+                    {"key": "name", "match": {"value": username}}
+                ]
+            },
+            limit=1
+        )
 
+        has_uploaded = len(search_result[0]) > 0
+        return jsonify({"uploaded": has_uploaded})
+    
+    except Exception as e:
+        print(f"Error checking resume for {username}: {e}")
+        return jsonify({"uploaded": False, "error": str(e)}), 500
 
 @app.route("/chat", methods=["POST"])
 def chatting():
