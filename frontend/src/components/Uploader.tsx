@@ -35,7 +35,7 @@ const Uploader = () => {
         const data = await res.data;
         if (data) {
           localStorage.setItem("current_user", name); // 👈 Store the name in localStorage
-          navigate("/chat");
+          navigate("/network");
         } else {
           console.log("Failed to upload resume.");
         }

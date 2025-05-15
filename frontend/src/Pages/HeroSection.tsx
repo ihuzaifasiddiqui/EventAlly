@@ -4,11 +4,31 @@ import { useNavigate } from "react-router-dom";
 import { ShimmerButton } from "@/components/magicui/shimmer-button";
 import { LineShadowText } from "@/components/magicui/line-shadow-text";
 import { ChevronRight } from "lucide-react";
+import axios from "axios";
 
 // style={{ background: "radial-gradient(circle at top, #161d19, #4b405e)"
 
 const HeroSection = () => {
   const nav = useNavigate();
+  const handleAuth = async () => {
+    try {
+      const res = await axios.get("http://127.0.0.1:5000", {
+        withCredentials: true,
+      });
+
+      if (res.status === 200 && res.data?.data?.email) {
+        console.log("Already logged in:", res.data.data);
+        window.location.href = "http://localhost:5173/chat";
+      } else {
+        window.location.href = "http://127.0.0.1:5000/login/google";
+      }
+  
+    } catch (error) {
+      console.error("Auth check failed, redirecting to login...", error);
+      // On failure (e.g., 401), trigger login redirect
+      window.location.href = "http://127.0.0.1:5000/login/google";
+    }
+  };
   return (
     <div className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden bg-[url(./assets/gradient_backdrop.png)] bg-cover bg-fixed bg-center bg-no-repeat bg-background">
       <div className="flex flex-col justify-center h-full items-center">
@@ -37,7 +57,7 @@ const HeroSection = () => {
         </span>
 
         <div className="mt-8">
-          <ShimmerButton className="shadow-2xl px-4 py-4 mt-10" onClick={()=>nav("/chat")}>
+          <ShimmerButton className="shadow-2xl px-4 py-4 mt-10" onClick={handleAuth}>
             <div className="flex items-center justify-center font-playfair text-center text-sm font-medium leading-none tracking-tight text-white dark:from-white dark:to-slate-900/10 lg:text-2xl">
               Get Started <ChevronRight className="ml-1" />
             </div>
