@@ -245,7 +245,7 @@ def after_login():
     # Optional: create a session, return JWT, etc.
 
     # Redirect to frontend with user info or token
-    return redirect(f"http://localhost:5173/chat?email={user_info['email']}&name={user_info['name']}")
+    return redirect(f"https://eventally.netlify.app/chat?email={user_info['email']}&name={user_info['name']}")
 
 import re
 
