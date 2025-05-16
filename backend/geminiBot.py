@@ -49,22 +49,21 @@ app.register_blueprint(blueprint, url_prefix="/login")
 
 
 app.config['UPLOAD_FOLDER'] = tempfile.gettempdir()
-
-QDRANT_HOST = "localhost"
-QDRANT_PORT = 6333
-QDRANT_COLLECTION_NAME = "resumes"
-
-qdrant_client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+qdrant_client = QdrantClient(
+    url="https://1c7b5c09-be7f-4b75-b364-a253421756c8.eu-west-1-0.aws.cloud.qdrant.io/", 
+    api_key = os.environ.get("QDRANT_API_KEY")  # load this securely from environment
+)
 
 # Initialize Gemini models
 embedding_model = GenerativeModel("embedding-001")
 chat_model = GenerativeModel("gemini-2.0-flash")  # You can also use "gemini-2.0-flash" if available
+QDRANT_COLLECTION_NAME='resumes'
 
 # Ensure the Qdrant collection exists
 def create_qdrant_collection():
     collections = qdrant_client.get_collections().collections
     if QDRANT_COLLECTION_NAME not in [col.name for col in collections]:
-        qdrant_client.recreate_collection(
+        qdrant_client.create_collection(
             collection_name=QDRANT_COLLECTION_NAME,
             vectors_config=models.VectorParams(size=768, distance=models.Distance.COSINE),  # Gemini embeddings are 768 dimensions
         )
@@ -295,7 +294,7 @@ def fileUpload():
                 model="gemini-embedding-exp-03-07",
                 content=resume_text,
                 task_type="retrieval_document",
-                output_dimensionality=1536
+                output_dimensionality=768
             )
             embedding = embedding_response["embedding"]
 
@@ -476,5 +475,5 @@ def chatting():
             print(f"An unexpected error occurred: {e}")
             return jsonify({"error": "An unexpected error occurred"}), 500
 
-# if __name__ == "__main__":
-#     app.run(debug=True)
+if __name__ == "__main__":
+    app.run(debug=True)
